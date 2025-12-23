@@ -1,11 +1,9 @@
-from pyrogram import Client, filters
 from pyrogram.types import Message
 import logging
 
 logger = logging.getLogger(__name__)
 
-@Client.on_message(filters.command("test"))
-async def test_command(client: Client, message: Message):
+async def test_command(client, message: Message):
     logger.info(f"[HANDLER] /test command received from user {message.from_user.id}")
     try:
         await message.reply_text("[OK] **Test Successful!**\n\nBot is responding correctly to commands.")

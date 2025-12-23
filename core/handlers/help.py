@@ -1,11 +1,9 @@
-from pyrogram import Client, filters
 from pyrogram.types import Message
 import logging
 
 logger = logging.getLogger(__name__)
 
-@Client.on_message(filters.command("help"))
-async def help_command(client: Client, message: Message):
+async def help_command(client, message: Message):
     """Show help information."""
     logger.info(f"[HANDLER] /help command received from user {message.from_user.id}")
 

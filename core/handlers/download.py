@@ -1,4 +1,3 @@
-from pyrogram import Client, filters
 from pyrogram.types import Message
 import logging
 import time
@@ -6,8 +5,7 @@ from ..bot import active_downloads, user_states, parse_link, userbot_client, bot
 
 logger = logging.getLogger(__name__)
 
-@Client.on_message(filters.command("download"))
-async def download_command(client: Client, message: Message):
+async def download_command(client, message: Message):
     logger.info(f"[HANDLER] /download command received from user {message.from_user.id}")
     user_id = message.from_user.id
 

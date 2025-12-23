@@ -1,4 +1,3 @@
-from pyrogram import Client, filters
 from pyrogram.types import Message
 import logging
 import time
@@ -9,8 +8,7 @@ from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
-@Client.on_message(filters.command("batch"))
-async def batch_command(client: Client, message: Message):
+async def batch_command(client, message: Message):
     """Handle batch processing command."""
     logger.info(f"[HANDLER] /batch command received from user {message.from_user.id}")
     user_id = message.from_user.id
@@ -44,8 +42,7 @@ async def batch_command(client: Client, message: Message):
         "Send /cancel to abort setup."
     )
 
-@Client.on_message(filters.command("batch_status"))
-async def batch_status_command(client: Client, message: Message):
+async def batch_status_command(client, message: Message):
     """Show current batch status."""
     logger.info(f"[HANDLER] /batch_status command received from user {message.from_user.id}")
     user_id = message.from_user.id
@@ -83,8 +80,7 @@ async def batch_status_command(client: Client, message: Message):
 
     await message.reply_text(status_text)
 
-@Client.on_message(filters.command("batch_pause"))
-async def batch_pause_command(client: Client, message: Message):
+async def batch_pause_command(client, message: Message):
     """Pause current batch operation."""
     logger.info(f"[HANDLER] /batch_pause command received from user {message.from_user.id}")
     user_id = message.from_user.id
@@ -94,8 +90,7 @@ async def batch_pause_command(client: Client, message: Message):
     else:
         await message.reply_text("[WARNING] **No active batch to pause**\n\nUse /batch to start a new batch process.")
 
-@Client.on_message(filters.command("batch_resume"))
-async def batch_resume_command(client: Client, message: Message):
+async def batch_resume_command(client, message: Message):
     """Resume paused batch operation."""
     logger.info(f"[HANDLER] /batch_resume command received from user {message.from_user.id}")
     user_id = message.from_user.id
@@ -128,8 +123,7 @@ async def batch_resume_command(client: Client, message: Message):
     else:
         await message.reply_text("[ERROR] **Failed to resume batch**\n\nPlease try again or start a new batch.")
 
-@Client.on_message(filters.command("batch_cancel"))
-async def batch_cancel_command(client: Client, message: Message):
+async def batch_cancel_command(client, message: Message):
     """Cancel current batch operation."""
     logger.info(f"[HANDLER] /batch_cancel command received from user {message.from_user.id}")
     user_id = message.from_user.id

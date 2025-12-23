@@ -1,12 +1,10 @@
-from pyrogram import Client, filters
 from pyrogram.types import Message
 import logging
 from ..speed_test import run_speedtest
 
 logger = logging.getLogger(__name__)
 
-@Client.on_message(filters.command("speed"))
-async def speed_command(client: Client, message: Message):
+async def speed_command(client, message: Message):
     """Run internet speed test."""
     logger.info(f"[HANDLER] /speed command received from user {message.from_user.id}")
     try:

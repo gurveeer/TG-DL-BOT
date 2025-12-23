@@ -1,12 +1,10 @@
-from pyrogram import Client, filters
 from pyrogram.types import Message
 import logging
 from ..bot import file_manager
 
 logger = logging.getLogger(__name__)
 
-@Client.on_message(filters.command("cleanup"))
-async def cleanup_command(client: Client, message: Message):
+async def cleanup_command(client, message: Message):
     """Clean up old downloaded files."""
     logger.info(f"[HANDLER] /cleanup command received from user {message.from_user.id}")
 

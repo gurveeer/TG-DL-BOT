@@ -1,4 +1,3 @@
-from pyrogram import Client, filters
 from pyrogram.types import Message
 import logging
 from ..performance import performance_optimizer
@@ -7,8 +6,7 @@ from ..managers.file_manager import file_manager
 
 logger = logging.getLogger(__name__)
 
-@Client.on_message(filters.command("stats"))
-async def stats_command(client: Client, message: Message):
+async def stats_command(client, message: Message):
     """Show performance statistics."""
     logger.info(f"[HANDLER] /stats command received from user {message.from_user.id}")
     try:

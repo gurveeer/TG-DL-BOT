@@ -181,6 +181,30 @@ def sync_cleanup():
 atexit.register(sync_cleanup)
 
 # Core utility functions
+def sanitize_filename(filename: str, max_length: int = 200) -> str:
+    """
+    Sanitize filename for Windows compatibility.
+    Removes or replaces invalid characters.
+    """
+    # Characters invalid on Windows: < > : " / \ | ? *
+    invalid_chars = r'<>:"/\|?*'
+    for char in invalid_chars:
+        filename = filename.replace(char, '_')
+    
+    # Remove leading/trailing spaces and dots
+    filename = filename.strip('. ')
+    
+    # Limit length (Windows has 255 char limit per filename)
+    if len(filename) > max_length:
+        name, ext = os.path.splitext(filename)
+        filename = name[:max_length-len(ext)] + ext
+    
+    # If filename is empty, use a default
+    if not filename:
+        filename = "download"
+    
+    return filename
+
 def parse_link(link: str) -> tuple[Optional[str], Optional[int], Optional[str]]:
     """
     Parses a Telegram message link and extracts the chat ID, message ID, and link type.
@@ -573,6 +597,29 @@ async def process_media_message(bot_client: Client, userbot: Optional[Client], m
         # Send initial status
         status_msg = await bot_client.send_message(destination, "📥 **Starting download...**")
         
+        # Generate a sanitized filename
+        file_ext = ""
+        if message.media:
+            # Get the file extension based on media type
+            if message.video:
+                file_ext = ".mp4"
+            elif message.audio:
+                file_ext = ".mp3"
+            elif message.document:
+                file_ext = os.path.splitext(message.document.file_name)[1] if message.document.file_name else ".bin"
+            elif message.photo:
+                file_ext = ".jpg"
+            elif message.animation:
+                file_ext = ".gif"
+            else:
+                file_ext = ".bin"
+        
+        # Create a unique sanitized filename
+        message_title = message.chat.title or f"message_{message.id}"
+        sanitized_title = sanitize_filename(message_title)
+        unique_filename = f"{sanitized_title}_{message.id}{file_ext}"
+        filepath = os.path.join("downloads", unique_filename)
+        
         # Download media
         for attempt in range(MAX_RETRIES):
             try:
@@ -581,7 +628,7 @@ async def process_media_message(bot_client: Client, userbot: Optional[Client], m
                 downloaded_file = await asyncio.wait_for(
                     target_client.download_media(
                         message, 
-                        file_name="downloads/",
+                        file_name=filepath,
                         progress=download_progress
                     ),
                     timeout=300.0
@@ -1004,14 +1051,36 @@ import importlib
 import pkgutil
 
 def load_handlers():
-    """Dynamically load all handlers from the 'handlers' directory."""
-    handlers_dir = os.path.join(os.path.dirname(__file__), "handlers")
-    for _, name, _ in pkgutil.iter_modules([handlers_dir]):
-        try:
-            importlib.import_module(f".handlers.{name}", __package__)
-            logger.info(f"Successfully loaded handler: {name}")
-        except Exception as e:
-            logger.error(f"Failed to load handler {name}: {e}")
+    """Dynamically load and register all handlers."""
+    try:
+        # Import handler modules to get their functions
+        from .handlers import start, test, help, speed, cleanup, cancel, download, batch, stats
+        
+        # Register handlers with bot_client
+        bot_client.on_message(filters.command("start"))(start.start_command)
+        bot_client.on_message(filters.command("test"))(test.test_command)
+        bot_client.on_message(filters.command("help"))(help.help_command)
+        bot_client.on_message(filters.command("speed"))(speed.speed_command)
+        bot_client.on_message(filters.command("cleanup"))(cleanup.cleanup_command)
+        bot_client.on_message(filters.command("cancel"))(cancel.cancel_command)
+        bot_client.on_message(filters.command("download"))(download.download_command)
+        
+        # Batch handlers
+        bot_client.on_message(filters.command("batch"))(batch.batch_command)
+        bot_client.on_message(filters.command("batch_status"))(batch.batch_status_command)
+        bot_client.on_message(filters.command("batch_pause"))(batch.batch_pause_command)
+        bot_client.on_message(filters.command("batch_resume"))(batch.batch_resume_command)
+        bot_client.on_message(filters.command("batch_cancel"))(batch.batch_cancel_command)
+        
+        # Stats handler
+        bot_client.on_message(filters.command("stats"))(stats.stats_command)
+        
+        logger.info("Successfully loaded all handlers")
+        
+    except Exception as e:
+        logger.error(f"Failed to load handlers: {e}")
+        import traceback
+        traceback.print_exc()
 
 def main():
     """Main function to start the bot."""

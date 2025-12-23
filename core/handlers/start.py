@@ -1,11 +1,9 @@
-from pyrogram import Client, filters
 from pyrogram.types import Message
 import logging
 
 logger = logging.getLogger(__name__)
 
-@Client.on_message(filters.command("start"))
-async def start_command(client: Client, message: Message):
+async def start_command(client, message: Message):
     logger.info(f"[HANDLER] /start command received from user {message.from_user.id}")
     try:
         response = (

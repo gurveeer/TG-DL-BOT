@@ -154,4 +154,4 @@ class EnhancedFileManager:
 
 
 # Global instance
-file_manager = EnhancedFileManager(mcp_available=False)
+file_manager = EnhancedFileManager(mcp_filesystem_available=False)
