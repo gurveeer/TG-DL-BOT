@@ -3,6 +3,7 @@ import logging
 from ..performance import performance_optimizer
 from ..managers.download_manager import download_manager
 from ..managers.file_manager import file_manager
+from ..bot import safe_execute_send
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +47,7 @@ async def stats_command(client, message: Message):
         if disk_info.get('warning'):
             stats_text += "\n\n[WARNING] Low disk space! Use /cleanup"
 
-        await message.reply_text(stats_text)
+        await safe_execute_send(message.chat.id, message.reply_text, stats_text)
     except Exception as e:
         logger.error(f"[HANDLER] Error in /stats handler: {e}")
-        await message.reply_text(f"[ERROR] Could not retrieve stats: {str(e)[:100]}")
+        await safe_execute_send(message.chat.id, message.reply_text, f"[ERROR] Could not retrieve stats: {str(e)[:100]}")

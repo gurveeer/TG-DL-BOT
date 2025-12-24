@@ -1,7 +1,7 @@
 from pyrogram.types import Message
 import logging
 import time
-from ..bot import user_states, batch_controller, process_batch_messages, active_downloads
+from ..bot import user_states, batch_controller, process_batch_messages, active_downloads, safe_execute_send
 from ..batch import BatchState
 import asyncio
 from datetime import datetime
@@ -16,7 +16,7 @@ async def batch_command(client, message: Message):
     # Check if user already has an active batch
     current_batch = await batch_controller.get_progress(user_id)
     if current_batch and current_batch.state in [BatchState.RUNNING, BatchState.PAUSED]:
-        await message.reply_text(
+        await safe_execute_send(message.chat.id, message.reply_text,
             f"[WARNING] **Batch operation in progress**\n\n"
             f"Current: {current_batch.current}/{current_batch.total}\n"
             f"Status: {current_batch.state.value}\n\n"
@@ -32,7 +32,7 @@ async def batch_command(client, message: Message):
         "timestamp": time.time()
     }
 
-    await message.reply_text(
+    await safe_execute_send(message.chat.id, message.reply_text,
         "[INFO] **Batch Processing Setup**\n\n"
         "Step 1: Send me the **first message link** to start from.\n\n"
         "**Supported formats:**\n"
@@ -49,7 +49,7 @@ async def batch_status_command(client, message: Message):
 
     current_batch = await batch_controller.get_progress(user_id)
     if not current_batch:
-        await message.reply_text("[INFO] **No active batch operation**\n\nUse /batch to start a new batch process.")
+        await safe_execute_send(message.chat.id, message.reply_text, "[INFO] **No active batch operation**\n\nUse /batch to start a new batch process.")
         return
 
     # Calculate progress percentage

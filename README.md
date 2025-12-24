@@ -52,6 +52,9 @@
 - **Automatic Cleanup**: Guaranteed file cleanup via finally blocks
 - **Memory Leak Prevention**: Proper resource management and cleanup
 - **Graceful Degradation**: Clear error messages and fallback behavior
+- **FloodWait Handling**: Automatic retry with jitter when rate-limited by Telegram
+- **Per-Destination Rate Limiting**: Token-bucket limiter prevents rate-limit violations
+- **Safe Sends**: All Telegram API calls protected with retry logic
 
 ### 🎮 Control Features
 
@@ -254,10 +257,12 @@ Follow the prompts to authenticate and copy the generated session string to your
 
 - **Max Batch Size**: 300 messages
 - **Retry Attempts**: 3 per operation
-- **Backoff Strategy**: Exponential (1s, 2s, 4s)
-- **Queue Workers**: Concurrent processing
+- **Backoff Strategy**: Exponential (1s, 2s, 4s) with jitter
+- **Rate Limiting**: 1 msg/sec per destination (configurable)
+- **Queue Workers**: Reduced to 4 for stability
 - **Health Check**: Port 3000
 - **File Cleanup**: Guaranteed via finally blocks
+- **FloodWait Recovery**: Automatic with exponential backoff
 
 ## 🔒 Security Features
 

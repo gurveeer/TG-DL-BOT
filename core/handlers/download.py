@@ -1,7 +1,7 @@
 from pyrogram.types import Message
 import logging
 import time
-from ..bot import active_downloads, user_states, parse_link, userbot_client, bot_client, fetch_message, process_message
+from ..bot import active_downloads, user_states, parse_link, userbot_client, bot_client, fetch_message, process_message, safe_execute_send
 
 logger = logging.getLogger(__name__)
 
@@ -10,7 +10,7 @@ async def download_command(client, message: Message):
     user_id = message.from_user.id
 
     if user_id in active_downloads and active_downloads[user_id]:
-        await message.reply_text("[WARNING] **Download in progress**\n\nPlease wait for current download to complete.")
+        await safe_execute_send(message.chat.id, message.reply_text, "[WARNING] **Download in progress**\n\nPlease wait for current download to complete.")
         return
 
     if len(message.command) > 1:
@@ -22,7 +22,7 @@ async def download_command(client, message: Message):
             "chat_id": int(message.chat.id),
             "timestamp": time.time()
         }
-        await message.reply_text(
+        await safe_execute_send(message.chat.id, message.reply_text,
             "[DOWNLOAD] **Single Download**\n\n"
             "Send me the message link to download.\n\n"
             "**Examples:**\n"
@@ -43,7 +43,7 @@ async def process_download_link(m: Message, link: str) -> None:
         # Parse link
         chat_id, message_id, link_type = parse_link(link)
         if not chat_id or not message_id:
-            await m.reply_text(
+            await safe_execute_send(m.chat.id, m.reply_text,
                 "[ERROR] **Invalid link format**\n\n"
                 "**Supported formats:**\n"
                 "• https://t.me/channel/123 (public)\n"
@@ -54,7 +54,7 @@ async def process_download_link(m: Message, link: str) -> None:
 
         # Check private channel access
         if link_type == "private" and not userbot_client:
-            await m.reply_text(
+            await safe_execute_send(m.chat.id, m.reply_text,
                 "[WARNING] **Private Channel Access Required**\n\n"
                 "This is a private channel, but userbot is not configured.\n\n"
                 "**Setup Steps:**\n"
@@ -66,13 +66,14 @@ async def process_download_link(m: Message, link: str) -> None:
             return
 
         # Start processing
-        status_msg = await m.reply_text("[SEARCH] **Fetching message...**")
+        status_msg = await safe_execute_send(m.chat.id, m.reply_text, "[SEARCH] **Fetching message...**")
 
         # Fetch message
         msg = await fetch_message(bot_client, userbot_client, chat_id, message_id, link_type)
 
         if not msg:
-            await status_msg.edit("[ERROR] **Message not found or deleted**")
+            if status_msg:
+                await safe_execute_send(m.chat.id, status_msg.edit, "[ERROR] **Message not found or deleted**")
             return
 
         # Process the message
