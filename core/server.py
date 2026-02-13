@@ -75,6 +75,7 @@ async def run_server():
     app.router.add_get('/status', status_endpoint)
     
     # Add CORS headers for web access
+    @web.middleware
     async def add_cors_headers(request, handler):
         response = await handler(request)
         response.headers['Access-Control-Allow-Origin'] = '*'

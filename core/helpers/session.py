@@ -1,5 +1,21 @@
 import os
 import asyncio
+import sys
+
+# Fix for Python 3.14+ event loop issues - must be done before importing pyrogram
+if sys.platform == 'win32':
+    try:
+        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+    except AttributeError:
+        pass
+
+# Create event loop before importing pyrogram
+try:
+    loop = asyncio.get_event_loop()
+except RuntimeError:
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
 from pyrogram import Client
 from dotenv import load_dotenv
 

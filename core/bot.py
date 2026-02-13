@@ -27,17 +27,6 @@ from .config import config
 from .performance import performance_optimizer
 from .managers.download_manager import download_manager, DownloadTask
 
-# Optional Redis state management and file manager
-try:
-    from .redis_state import redis_state
-    from .managers.file_manager import file_manager
-    REDIS_AVAILABLE = True
-except Exception:
-    # Logger not available yet, will log later
-    redis_state = None
-    file_manager = None
-    REDIS_AVAILABLE = False
-
 # Performance optimization
 try:
     import uvloop
@@ -69,10 +58,6 @@ file_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelnam
 
 logging.basicConfig(level=logging.INFO, handlers=[console_handler, file_handler], force=True)
 logger = logging.getLogger(__name__)
-
-# Log Redis availability
-if not REDIS_AVAILABLE:
-    logger.info("[INFO] Redis state management not available - using in-memory state only")
 
 # Load environment variables
 load_dotenv()
@@ -936,20 +921,6 @@ async def process_batch_count(m: Message, count_text: str) -> None:
         if not success:
             await m.reply_text("[ERROR] **Batch initialization failed**\n\nYou may have an active batch. Use /batch_cancel first.")
             return
-        
-        # Persist batch state to Redis for recovery (if available)
-        if REDIS_AVAILABLE and redis_state:
-            try:
-                await redis_state.save_batch_state(user_id, {
-                    "chat_id_target": chat_id_target,
-                    "start_message_id": start_message_id,
-                    "count": count,
-                    "link_type": link_type,
-                    "destination": destination,
-                    "started_at": datetime.now().isoformat()
-                })
-            except Exception as e:
-                logger.warning(f"Could not save batch state to Redis: {e}")
         
         # Clean up user state
         user_states.pop(user_id, None)

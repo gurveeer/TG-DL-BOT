@@ -1,8 +1,9 @@
 from pyrogram.types import Message
 import logging
+import os
+import shutil
 from ..performance import performance_optimizer
 from ..managers.download_manager import download_manager
-from ..managers.file_manager import file_manager
 
 logger = logging.getLogger(__name__)
 
@@ -13,12 +14,24 @@ async def stats_command(client, message: Message):
         perf_stats = performance_optimizer.get_metrics()
         dl_stats = download_manager.get_stats()
 
-        # Get disk space info (if file_manager available)
-        if file_manager:
-            disk_info = await file_manager.monitor_disk_space()
-            dir_stats = await file_manager.get_directory_stats()
-        else:
+        # Get disk space info
+        try:
+            disk_usage = shutil.disk_usage(".")
+            free_gb = disk_usage.free / (1024**3)
+            disk_info = {"free_gb": free_gb, "warning": free_gb < 1.0}
+        except Exception:
             disk_info = {"free_gb": 0, "warning": False}
+        
+        # Get directory stats
+        try:
+            downloads_dir = "downloads"
+            if os.path.exists(downloads_dir):
+                total_files = len([f for f in os.listdir(downloads_dir) if os.path.isfile(os.path.join(downloads_dir, f))])
+                total_size = sum(os.path.getsize(os.path.join(downloads_dir, f)) for f in os.listdir(downloads_dir) if os.path.isfile(os.path.join(downloads_dir, f)))
+                dir_stats = {"total_files": total_files, "total_size_mb": total_size / (1024**2)}
+            else:
+                dir_stats = {"total_files": 0, "total_size_mb": 0}
+        except Exception:
             dir_stats = {"total_files": 0, "total_size_mb": 0}
 
         stats_text = (
