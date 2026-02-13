@@ -6,6 +6,13 @@ logger = logging.getLogger(__name__)
 async def start_command(client, message: Message):
     logger.info(f"[HANDLER] /start command received from user {message.from_user.id}")
     try:
+        # Import safe_execute_send from bot module
+        from . import bot as bot_module
+        if not hasattr(bot_module, 'safe_execute_send'):
+            from ..bot import safe_execute_send
+        else:
+            safe_execute_send = bot_module.safe_execute_send
+        
         response = (
             "[START] **Welcome to Telegram Message Saver Bot!**\n\n"
             "[OK] Bot is working perfectly!\n\n"
@@ -17,7 +24,8 @@ async def start_command(client, message: Message):
             "**Status:** All systems operational!\n\n"
             "Send me a message link to get started!"
         )
-        await message.reply_text(response)
+        # Use safe execute for reply
+        await safe_execute_send(message.chat.id, message.reply_text, response)
         logger.info(f"[HANDLER] /start response sent successfully")
     except Exception as e:
         logger.error(f"[HANDLER] Error in /start handler: {e}")

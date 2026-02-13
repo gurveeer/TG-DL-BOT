@@ -1,8 +1,12 @@
 from pyrogram.types import Message
 import logging
+<<<<<<< HEAD
 import os
 import shutil
 from datetime import datetime, timedelta
+=======
+from ..bot import file_manager, safe_execute_send
+>>>>>>> bf07a5f1b572c91ba24a45691e9118da095d0034
 
 logger = logging.getLogger(__name__)
 
@@ -10,8 +14,15 @@ async def cleanup_command(client, message: Message):
     """Clean up old downloaded files."""
     logger.info(f"[HANDLER] /cleanup command received from user {message.from_user.id}")
 
+<<<<<<< HEAD
+=======
+    if not file_manager:
+        await safe_execute_send(message.chat.id, message.reply_text, "[ERROR] **File manager not available**\n\nThis feature requires MCP integration.")
+        return
+
+>>>>>>> bf07a5f1b572c91ba24a45691e9118da095d0034
     try:
-        status_msg = await message.reply_text("[INFO] **Cleaning up old files...**")
+        status_msg = await safe_execute_send(message.chat.id, message.reply_text, "[INFO] **Cleaning up old files...**")
 
         downloads_dir = "downloads"
         if not os.path.exists(downloads_dir):
@@ -49,7 +60,8 @@ async def cleanup_command(client, message: Message):
             f"**Free Space:** {free_gb:.1f} GB"
         )
 
-        await status_msg.edit(cleanup_text)
+        if status_msg:
+            await safe_execute_send(message.chat.id, status_msg.edit, cleanup_text)
     except Exception as e:
         logger.error(f"[HANDLER] Error in /cleanup handler: {e}")
-        await message.reply_text(f"[ERROR] Cleanup failed: {str(e)[:100]}")
+        await safe_execute_send(message.chat.id, message.reply_text, f"[ERROR] Cleanup failed: {str(e)[:100]}")

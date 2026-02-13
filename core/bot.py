@@ -9,6 +9,7 @@ import time
 import logging
 import asyncio
 import atexit
+import random
 from typing import Optional, Dict, Any, List
 from datetime import datetime
 from mimetypes import guess_type
@@ -16,6 +17,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 # Third-party imports
 from pyrogram import Client, filters
+from pyrogram.errors import FloodWait
 from pyrogram.types import Message
 from dotenv import load_dotenv
 
@@ -74,7 +76,7 @@ bot_client = Client(
     api_id=config.api_id,
     api_hash=config.api_hash,
     bot_token=config.bot_token,
-    workers=8,
+    workers=config.bot_client_workers,
     workdir="./sessions"
 )
 
@@ -86,7 +88,7 @@ if config.session:
             api_id=config.api_id,
             api_hash=config.api_hash,
             session_string=config.session,
-            workers=4,
+            workers=config.userbot_client_workers,
             workdir="./sessions"
         )
         logger.info("[OK] Userbot configured - Private channel access enabled")
@@ -310,6 +312,113 @@ async def fetch_message(client: Client, userbot: Optional[Client], chat_id: Any,
     logger.error(f"Failed to fetch message {message_id} after {MAX_RETRIES} attempts")
     return None
 
+
+async def safe_send_message(client: Client, chat_id: Any, text: str, max_retries: int = 2, max_wait_cap: int = 60):
+    """Send a message while handling FloodWait and transient errors.
+
+    Returns the sent message object on success or None on failure/skip.
+    """
+    for attempt in range(max_retries + 1):
+        try:
+            await rate_limiter.acquire(chat_id)
+            return await client.send_message(chat_id, text)
+        except FloodWait as fw:
+            try:
+                wait_time = int(re.search(r"\d+", str(fw)).group())
+            except Exception:
+                wait_time = 5
+            wait_time = min(wait_time, max_wait_cap)
+            # small jitter to reduce contention
+            jitter = random.uniform(0, 1)
+            logger.warning(f"Flood wait while sending message: sleeping for {wait_time + jitter:.1f}s (attempt {attempt + 1})")
+            await asyncio.sleep(wait_time + jitter)
+            continue
+        except Exception as e:
+            logger.warning(f"Failed to send message to {chat_id}: {e}")
+            return None
+
+    logger.error(f"Could not send message to {chat_id} after {max_retries + 1} attempts")
+    return None
+
+
+class RateLimiter:
+    """Simple token-bucket rate limiter per key (chat_id).
+
+    Defaults to 1 token/sec with burst up to 5 tokens.
+    """
+    def __init__(self, rate: float = 1.0, per: float = 1.0, burst: int = 5):
+        self.rate = rate
+        self.per = per
+        self.burst = burst
+        self._allowance: Dict[Any, float] = {}
+        self._last_check: Dict[Any, float] = {}
+
+    async def acquire(self, key: Any) -> None:
+        now = time.time()
+        allowance = self._allowance.get(key, float(self.burst))
+        last = self._last_check.get(key, now)
+
+        # refill tokens
+        elapsed = now - last
+        allowance = min(self.burst, allowance + elapsed * (self.rate / self.per))
+
+        if allowance >= 1.0:
+            allowance -= 1.0
+            self._allowance[key] = allowance
+            self._last_check[key] = now
+            return
+
+        # need to wait for tokens
+        needed = 1.0 - allowance
+        # time per token
+        token_time = self.per / self.rate if self.rate > 0 else 1.0
+        wait_time = needed * token_time
+        # small jitter
+        wait_time += random.uniform(0, 0.5)
+        await asyncio.sleep(wait_time)
+        # consume token
+        self._allowance[key] = 0.0
+        self._last_check[key] = time.time()
+
+
+# Global rate limiter instance - initialized with config values
+rate_limiter = RateLimiter(
+    rate=config.rate_limit_rate,
+    per=config.rate_limit_per,
+    burst=config.rate_limit_burst
+)
+
+
+async def safe_execute_send(chat_id: Any, send_coro, *args, max_retries: int = 3, max_wait_cap: int = 300, **kwargs):
+    """Execute a send/copy/upload coroutine with rate limiting and FloodWait handling.
+
+    `send_coro` must be an awaitable/coroutine function (callable).
+    """
+    for attempt in range(max_retries + 1):
+        try:
+            await rate_limiter.acquire(chat_id)
+            result = await send_coro(*args, **kwargs)
+            return result
+        except FloodWait as fw:
+            try:
+                wait_time = int(re.search(r"\d+", str(fw)).group())
+            except Exception:
+                wait_time = 5
+            wait_time = min(wait_time, max_wait_cap)
+            jitter = random.uniform(0, 1)
+            logger.warning(f"Flood wait in send operation: sleeping {wait_time + jitter:.1f}s (attempt {attempt + 1})")
+            await asyncio.sleep(wait_time + jitter)
+            continue
+        except Exception as e:
+            logger.warning(f"Send operation failed (attempt {attempt + 1}): {e}")
+            if attempt < max_retries:
+                delay = min(2 ** attempt + random.uniform(0, 0.5), 10)
+                await asyncio.sleep(delay)
+                continue
+            return None
+
+    return None
+
 async def safe_remove_file(file_path: str) -> bool:
     """
     Safely removes a file from the local filesystem.
@@ -426,8 +535,11 @@ async def process_message(bot_client: Client, userbot: Optional[Client], message
             if link_type == "public":
                 try:
                     logger.info(f"[PROCESS] Attempting simple copy for public channel media")
-                    await message.copy(chat_id=destination)
-                    return "[OK] Media sent (copied)"
+                    res = await safe_execute_send(destination, message.copy, chat_id=destination)
+                    if res is not None:
+                        return "[OK] Media sent (copied)"
+                    else:
+                        logger.warning("[PROCESS] Copy returned None, falling back to download/upload")
                 except Exception as copy_error:
                     logger.warning(f"[PROCESS] Copy failed, falling back to download/upload: {copy_error}")
             
@@ -436,16 +548,18 @@ async def process_message(bot_client: Client, userbot: Optional[Client], message
         
         # Handle text messages
         elif message.text:
-            try:
-                logger.info(f"[PROCESS] Processing text message")
-                if link_type == "private" and userbot:
-                    await bot_client.send_message(destination, text=message.text)
-                else:
-                    await message.copy(chat_id=destination)
-                return "[OK] Text sent"
-            except Exception as e:
-                logger.error(f"Error sending text message: {e}")
-                return f"[ERROR] Text failed: {str(e)[:50]}"
+                try:
+                    logger.info(f"[PROCESS] Processing text message")
+                    if link_type == "private" and userbot:
+                        await safe_send_message(bot_client, destination, message.text)
+                    else:
+                        res = await safe_execute_send(destination, message.copy, chat_id=destination)
+                        if res is None:
+                            raise Exception("Copy failed")
+                    return "[OK] Text sent"
+                except Exception as e:
+                    logger.error(f"Error sending text message: {e}")
+                    return f"[ERROR] Text failed: {str(e)[:50]}"
         
         else:
             logger.warning(f"[PROCESS] Unsupported message type - no media or text")
@@ -579,8 +693,8 @@ async def process_media_message(bot_client: Client, userbot: Optional[Client], m
         # Ensure downloads directory exists
         os.makedirs("downloads", exist_ok=True)
         
-        # Send initial status
-        status_msg = await bot_client.send_message(destination, "📥 **Starting download...**")
+        # Send initial status (use safe sender to handle FloodWait)
+        status_msg = await safe_send_message(bot_client, destination, "📥 **Starting download...**")
         
         # Generate a sanitized filename
         file_ext = ""
@@ -668,65 +782,23 @@ async def process_media_message(bot_client: Client, userbot: Optional[Client], m
                 
                 # Choose appropriate upload method with progress
                 if message.photo:
-                    await bot_client.send_photo(
-                        destination, 
-                        photo=downloaded_file, 
-                        caption=caption,
-                        progress=upload_progress
-                    )
+                    await safe_execute_send(destination, bot_client.send_photo, destination, photo=downloaded_file, caption=caption, progress=upload_progress)
                 elif message.video:
-                    await bot_client.send_video(
-                        destination, 
-                        video=downloaded_file, 
-                        caption=caption,
-                        progress=upload_progress
-                    )
+                    await safe_execute_send(destination, bot_client.send_video, destination, video=downloaded_file, caption=caption, progress=upload_progress)
                 elif message.document:
-                    await bot_client.send_document(
-                        destination, 
-                        document=downloaded_file, 
-                        caption=caption,
-                        progress=upload_progress
-                    )
+                    await safe_execute_send(destination, bot_client.send_document, destination, document=downloaded_file, caption=caption, progress=upload_progress)
                 elif message.audio:
-                    await bot_client.send_audio(
-                        destination, 
-                        audio=downloaded_file, 
-                        caption=caption,
-                        progress=upload_progress
-                    )
+                    await safe_execute_send(destination, bot_client.send_audio, destination, audio=downloaded_file, caption=caption, progress=upload_progress)
                 elif message.voice:
-                    await bot_client.send_voice(
-                        destination, 
-                        voice=downloaded_file,
-                        progress=upload_progress
-                    )
+                    await safe_execute_send(destination, bot_client.send_voice, destination, voice=downloaded_file, progress=upload_progress)
                 elif message.video_note:
-                    await bot_client.send_video_note(
-                        destination, 
-                        video_note=downloaded_file,
-                        progress=upload_progress
-                    )
+                    await safe_execute_send(destination, bot_client.send_video_note, destination, video_note=downloaded_file, progress=upload_progress)
                 elif message.sticker:
-                    await bot_client.send_sticker(
-                        destination, 
-                        sticker=downloaded_file,
-                        progress=upload_progress
-                    )
+                    await safe_execute_send(destination, bot_client.send_sticker, destination, sticker=downloaded_file, progress=upload_progress)
                 elif message.animation:
-                    await bot_client.send_animation(
-                        destination, 
-                        animation=downloaded_file, 
-                        caption=caption,
-                        progress=upload_progress
-                    )
+                    await safe_execute_send(destination, bot_client.send_animation, destination, animation=downloaded_file, caption=caption, progress=upload_progress)
                 else:
-                    await bot_client.send_document(
-                        destination, 
-                        document=downloaded_file, 
-                        caption=caption,
-                        progress=upload_progress
-                    )
+                    await safe_execute_send(destination, bot_client.send_document, destination, document=downloaded_file, caption=caption, progress=upload_progress)
                 
                 # Success - record performance metrics
                 if hasattr(download_progress, 'start_time'):
@@ -992,7 +1064,8 @@ async def process_batch_messages(user_id: int, chat_id: Any, start_message_id: i
             elapsed_str = str(elapsed).split('.')[0]
             
             try:
-                await bot_client.send_message(
+                await safe_send_message(
+                    bot_client,
                     destination,
                     f"[SUCCESS] **Batch completed!**\n\n"
                     f"**Total:** {len(results)} messages\n"
@@ -1009,7 +1082,8 @@ async def process_batch_messages(user_id: int, chat_id: Any, start_message_id: i
         logger.error(f"[BATCH] Fatal error in batch processing: {e}")
         performance_optimizer.record_failure()
         try:
-            await bot_client.send_message(
+            await safe_send_message(
+                bot_client,
                 destination,
                 f"[ERROR] **Batch failed**\n\nError: {str(e)[:100]}"
             )

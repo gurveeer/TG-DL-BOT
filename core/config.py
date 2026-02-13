@@ -17,6 +17,21 @@ class Config:
         self.bot_token: Optional[str] = None
         self.session: Optional[str] = None
         
+        # Rate limiter settings (per destination)
+        self.rate_limit_rate: float = 1.0  # tokens per second
+        self.rate_limit_per: float = 1.0  # refill period
+        self.rate_limit_burst: int = 5    # max tokens to hold
+        
+        # Worker/concurrency settings
+        self.bot_client_workers: int = 4      # down from 8 to reduce pressure
+        self.userbot_client_workers: int = 2  # down from 4
+        self.max_concurrent_downloads: int = 2 # reduced for stability
+        self.download_timeout_sec: int = 300
+        
+        # FloodWait settings
+        self.flood_wait_max_cap: int = 60  # max sleep on flood wait
+        self.max_send_retries: int = 3
+        
         # Load and validate configuration
         self._load_config()
     
@@ -30,6 +45,16 @@ class Config:
             self.api_hash = os.getenv("API_HASH")
             self.bot_token = os.getenv("BOT_TOKEN")
             self.session = os.getenv("SESSION")
+            
+            # Optional rate limit overrides from env
+            if rate_limit := os.getenv("RATE_LIMIT_RATE"):
+                self.rate_limit_rate = float(rate_limit)
+            if burst := os.getenv("RATE_LIMIT_BURST"):
+                self.rate_limit_burst = int(burst)
+            if workers := os.getenv("BOT_WORKERS"):
+                self.bot_client_workers = int(workers)
+            if max_down := os.getenv("MAX_CONCURRENT_DOWNLOADS"):
+                self.max_concurrent_downloads = int(max_down)
             
         except ValueError as e:
             raise ValueError(f"Invalid configuration value: {e}")
